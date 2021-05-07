@@ -1,20 +1,28 @@
 <script>
-  import throttle from "just-throttle";
+  import { getContext } from "svelte";
 
-  export let onChangeText;
-  let filterText = "";
+  export let placeHolder;
 
-  const changeText = () => {
-    onChangeText(filterText);
-  };
+  const searchText = getContext("searchText");
 </script>
 
-<div class="container py-4 mx-auto">
+<style>
+  div {
+    margin-top: $spacing-xs;
+    margin-bottom: $spacing-xs;
+  }
+  #filter-input {
+    width: 100%;
+    box-shadow: 3px 3px 6px rgba($color-black, 0.1);
+    border-radius: 15px;
+    border: 1px solid #000;
+  }
+</style>
+
+<div>
   <input
-    class="shadow appearance-none border rounded w-full p-2 text-gray-700
-    leading-tight focus:outline-none focus:shadow-outline"
-    type="text"
-    bind:value={filterText}
-    on:input={throttle(changeText, 200)}
-    placeholder="filter terms" />
+    {placeHolder}
+    type="search"
+    id="filter-input"
+    bind:value={$searchText} />
 </div>

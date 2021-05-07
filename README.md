@@ -3,13 +3,17 @@
 [![CircleCI](https://circleci.com/gh/mozilla/glean-dictionary.svg?style=svg)](https://circleci.com/gh/mozilla/glean-dictionary)
 
 The Glean dictionary aims to provide a comprehensive index of datasets generated
-inside Mozilla for newer applications using the
+inside Mozilla for applications built using the
 [Glean SDK](https://mozilla.github.io/glean/book/index.html).
 
-This project is under active development and documentation is presently
-incomplete. For now, please see the
-[project proposal](https://docs.google.com/document/d/1OkTWA3rsSJ0m5g9GDnxXVUMkJP-xJMQk_bDgDq-Z9xM/edit#heading=h.jwawftif1tt5)
-for more details on the Glean Dictionary's ambitions and goals.
+This project is under active development. For up to date information on project
+structure and governance, see:
+
+https://wiki.mozilla.org/Data/WorkingGroups/GleanDictionary
+
+You can play with an early version of the Glean Dictionary at:
+
+https://dictionary.protosaur.dev
 
 ## Getting Started
 
@@ -44,3 +48,28 @@ run:
 ```bash
 npm run storybook
 ```
+
+### Storybook Snapshot Testing
+
+To give us more confidence that changes don't unintentionally break the UI, we
+run
+[storybook snapshot tests](https://storybook.js.org/docs/react/workflows/snapshot-testing).
+
+You can run them manually as follows:
+
+```bash
+npm run test:jest
+```
+
+If you intentionally made a change to a component that results in a change to
+the output of the storybook snapshots, you can re-generate them using the
+following command:
+
+```bash
+npm run test:jest -- -u
+```
+
+## Contributing
+
+For more information on contributing, see [CONTRIBUTING.md](./CONTRIBUTING.md)
+in the root of this repository.

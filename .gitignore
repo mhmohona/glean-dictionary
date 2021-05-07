@@ -1,5 +1,8 @@
 /node_modules/
 /public/build/
+/public/img/logos/
+/public/fonts/
+/storybook-static/
 venv
 *.pyc
 __pycache__/

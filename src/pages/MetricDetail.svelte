@@ -1,9 +1,61 @@
 <script>
+  import AppAlert from "../components/AppAlert.svelte";
+  import AppVariantSelector from "../components/AppVariantSelector.svelte";
+  import Commentary from "../components/Commentary.svelte";
+  import Markdown from "../components/Markdown.svelte";
+  import NotFound from "../components/NotFound.svelte";
+  import HelpHoverable from "../components/HelpHoverable.svelte";
+  import PageTitle from "../components/PageTitle.svelte";
+  import MetadataTable from "../components/MetadataTable.svelte";
+  import {
+    METRIC_DEFINITION_SCHEMA,
+    METRIC_METADATA_SCHEMA,
+  } from "../data/schemas";
   import { getMetricData } from "../state/api";
+  import { pageTitle } from "../state/stores";
+  import { getBigQueryURL } from "../state/urls";
+
+  import { isExpired } from "../state/metrics";
 
   export let params;
 
-  const metricDataPromise = getMetricData(params.app, params.metric);
+  let selectedAppVariant;
+  const metricDataPromise = getMetricData(params.app, params.metric).then(
+    (metricData) => {
+      [selectedAppVariant] = metricData.variants;
+      return metricData;
+    }
+  );
+
+  pageTitle.set(`${params.metric} | ${params.app} `);
+
+  function getGlamUrl(appVariant) {
+    if (selectedAppVariant.bigquery_names.metric_type === "event") {
+      // events are not supported by GLAM presently
+      return undefined;
+    }
+    const map = {
+      "org.mozilla.fenix": {
+        product: "fenix",
+        glam_id: "",
+      },
+      "org.mozilla.firefox_beta": {
+        product: "fenix",
+        glam_id: "beta",
+      },
+      "org.mozilla.firefox": {
+        product: "fenix",
+        glam_id: "release",
+      },
+    };
+    if (Object.keys(map).includes(appVariant.app_id)) {
+      const p = map[appVariant.app_id];
+      return `https://glam.telemetry.mozilla.org/${p.product}/probe/${appVariant.bigquery_names.glam_etl_name}/explore?app_id=${p.glam_id}`;
+    }
+
+    // The app isn't one GLAM supports so return nothing.
+    return undefined;
+  }
 
   function getMetricDocumentationURI(type) {
     const sourceDocs = "https://mozilla.github.io/glean/book/user/metrics/";
@@ -27,145 +79,104 @@
 
     return `${sourceDocs}${links[type]}` || sourceDocs;
   }
-
-  function getExpiryInfo(expiry) {
-    if (Date.now() > new Date(expiry)) {
-      return `expired on ${expiry}`;
-    }
-
-    switch (expiry) {
-      case "never":
-        return "never expires";
-      case "expired":
-        return "has already manually expired";
-      default:
-        return `expires on ${expiry}`;
-    }
-  }
 </script>
 
 <style>
-  .metrics-table {
-    @apply table-auto;
-    @apply my-4;
-  }
-  .metrics-table td {
-    @apply border;
-    @apply p-2;
+  @import "../main.scss";
+  @include metadata-table;
+  h2 {
+    @include text-title-xs;
   }
 </style>
 
 {#await metricDataPromise then metric}
-  <h1>{metric.name}</h1>
-  <p>{metric.description}</p>
+  {#if isExpired(metric.expires)}
+    <AppAlert
+      status="warning"
+      message="This metric has expired: it may not be present in the source code, new data will not be ingested into BigQuery, and it will not appear in dashboards." />
+  {/if}
+
+  <PageTitle text={metric.name} />
+
+  <Markdown text={metric.description} inline={false} />
+
   <p>
+    Metric of type
     <a
       href={getMetricDocumentationURI(metric.type)}
-      target="_blank">{metric.type}</a>
-    in
-    <a href={`/apps/${params.app}`}>{params.app}</a>
-    that
-    {getExpiryInfo(metric.expires)}
+      target="_blank">{metric.type}</a>. Sent in the
+    {#each metric.send_in_pings as pingId, i}
+      <a
+        href={`/apps/${params.app}/pings/${pingId}`}>{pingId}</a>{metric.send_in_pings.length > 1 && i < metric.send_in_pings.length - 1 ? ', ' : ''}
+    {/each}
+    ping{metric.send_in_pings.length > 1 ? 's' : ''}.
   </p>
-  <table class="metrics-table">
-    <tr>
-      <td>Relevant Bugs</td>
-      <td>
-        {#each metric.bugs as bug, i}
-          {#if bug.indexOf('http') > -1}
-            <a href={bug} title={bug} target="_blank"> {i + 1} </a>
-          {:else}<span>{bug}</span>{/if}
-        {/each}
-      </td>
-    </tr>
-    <tr>
-      <td>Send In Pings</td>
-      <td>
-        {#each metric.send_in_pings as mping}
-          <a href={`/apps/${params.app}/pings/${mping}`}> {mping} </a>
-        {/each}
-      </td>
-    </tr>
-    {#if metric.lifetime}
+  <h2>Definition</h2>
+
+  <MetadataTable
+    appName={params.app}
+    item={metric}
+    schema={METRIC_DEFINITION_SCHEMA} />
+
+  <h2>Metadata</h2>
+
+  <MetadataTable
+    appName={params.app}
+    item={metric}
+    schema={METRIC_METADATA_SCHEMA} />
+
+  <h2>Commentary</h2>
+  <Commentary item={metric} itemType={'metric'} />
+
+  <h2>Access</h2>
+
+  {#if metric.variants.length > 1}
+    <AppVariantSelector bind:selectedAppVariant variants={metric.variants} />
+  {/if}
+
+  {#if selectedAppVariant}
+    <table>
+      <col />
+      <col />
       <tr>
         <td>
-          <a
-            href="https://mozilla.github.io/glean/book/user/adding-new-metrics.html?highlight=lifetime#when-should-glean-automatically-clear-the-measurement"
-            target="_blank">
-            Lifetime
-          </a>
+          BigQuery
+          <HelpHoverable
+            content={'The BigQuery representation of this metric.'} />
         </td>
-        <td>{metric.lifetime}</td>
-      </tr>
-    {/if}
-    {#if metric.time_unit}
-      <tr>
         <td>
-          <a
-            href="https://mozilla.github.io/glean/book/user/metrics/timing_distribution.html"
-            target="_blank">
-            Time unit
-          </a>
+          {#each selectedAppVariant.bigquery_names.stable_ping_table_names as [sendInPing, tableName]}
+            <div>
+              In
+              <a
+                href={getBigQueryURL(params.app, selectedAppVariant.app_id, sendInPing)}>{tableName}</a>
+              <!-- Skip search string for event metrics as we can't directly lookup the columns in events tables -->
+              {#if selectedAppVariant.bigquery_names.metric_type !== 'event'}
+                as
+                <a
+                  href={getBigQueryURL(params.app, selectedAppVariant.app_id, sendInPing, selectedAppVariant.bigquery_names.metric_table_name)}>
+                  {selectedAppVariant.bigquery_names.metric_table_name}
+                </a>
+              {/if}
+            </div>
+          {/each}
         </td>
-        <td>{metric.time_unit}</td>
       </tr>
-    {/if}
-    {#if metric.bucket_count}
-      <tr>
-        <td>Bucket count</td>
-        <td>{metric.bucket_count}</td>
-      </tr>
-    {/if}
-    {#if metric.histogram_type}
-      <tr>
-        <td>Histogram type</td>
-        <td>{metric.histogram_type}</td>
-      </tr>
-    {/if}
-    {#if metric.unit}
-      <tr>
-        <td>Unit</td>
-        <td>{metric.unit}</td>
-      </tr>
-    {/if}
-    {#if metric.range_min !== undefined}
-      <tr>
-        <td>Range Minimum</td>
-        <td>{metric.range_min}</td>
-      </tr>
-    {/if}
-    {#if metric.range_max !== undefined}
-      <tr>
-        <td>Range Maximum</td>
-        <td>{metric.range_max}</td>
-      </tr>
-    {/if}
-    <tr>
-      <td>Disabled</td>
-      <td>{metric.disabled}</td>
-    </tr>
-    <tr>
-      <td>Data Reviews</td>
-      <td>
-        {#each metric.data_reviews as rev, i}
-          {#if rev.indexOf('http') > -1}
-            <a href={rev} title={rev} target="_blank"> {i + 1} </a>
-          {:else}
+      {#if getGlamUrl(selectedAppVariant)}
+        <tr>
+          <td>
+            GLAM
+            <HelpHoverable
+              content={'View this metric in Glean Aggregated Metrics'} />
+          </td>
+          <td>
             <a
-              href="https://bugzilla.mozilla.org/show_bug.cgi?id={rev}">{i + 1}</a>
-          {/if}
-        {/each}
-      </td>
-    </tr>
-    {#if metric.labels && metric.labels.length}
-      <tr>
-        <td>Labels</td>
-        <td>{metric.labels.join(', ')}</td>
-      </tr>
-    {/if}
-    <tr>
-      <td>Version</td>
-      <td>{metric.version || 0}</td>
-    </tr>
-  </table>
+              href={getGlamUrl(selectedAppVariant)}>{selectedAppVariant.bigquery_names.glam_etl_name}</a>
+          </td>
+        </tr>
+      {/if}
+    </table>
+  {/if}
+{:catch}
+  <NotFound pageName={params.metric} itemType="metric" />
 {/await}

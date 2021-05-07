@@ -1,6 +1,7 @@
 version: 2.1
 orbs:
   node: circleci/node@2.0.1
+  python: circleci/python@0.2.1
 jobs:
   build-and-test:
     executor:
@@ -10,8 +11,20 @@ jobs:
       - checkout
       - node/install-packages
       - run: npm install
+      - run: npm run build
+      - run: npm run build-storybook
       - run: npm test
+  python-build-and-test:
+    executor: python/default
+    steps:
+      - checkout
+      - python/install-deps
+      - run:
+          name: Run lint
+          command: make lint
+      - run: scripts/build-glean-metadata.py
 workflows:
   build-and-test:
     jobs:
       - build-and-test
+      - python-build-and-test

@@ -1,2 +1,7 @@
-mozilla-schema-generator
+autoflake
+black
+flake8
+flake8-black
+isort
+requests
 stringcase

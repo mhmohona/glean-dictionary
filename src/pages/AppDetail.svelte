@@ -1,72 +1,94 @@
 <script>
-  import { onMount } from "svelte";
+  import { setContext } from "svelte";
+  import { writable } from "svelte/store";
+
+  import { getAppData } from "../state/api";
+
+  import { APPLICATION_DEFINITION_SCHEMA } from "../data/schemas";
+  import AppAlert from "../components/AppAlert.svelte";
+  import Commentary from "../components/Commentary.svelte";
+  import ItemList from "../components/ItemList.svelte";
+  import MetadataTable from "../components/MetadataTable.svelte";
+  import NotFound from "../components/NotFound.svelte";
   import Pill from "../components/Pill.svelte";
-  import { fetchJSON } from "../state/api";
-  import FilterInput from "../components/FilterInput.svelte";
+  import { TabGroup, Tab, TabContent } from "../components/tabs";
+  import PageTitle from "../components/PageTitle.svelte";
+  import { pageState, pageTitle } from "../state/stores";
 
   export let params;
-  const URL = `data/${params.app}/index.json`;
-  let app;
-  let filteredMetrics;
 
-  onMount(async () => {
-    app = await fetchJSON(URL);
-    filteredMetrics = app.metrics;
-  });
+  const appDataPromise = getAppData(params.app);
 
-  function filterMetrics(filterText) {
-    filteredMetrics = app.metrics.filter((metric) =>
-      metric.name.includes(filterText)
-    );
+  let itemType = $pageState.itemType || "metrics";
+  const searchText = writable($pageState.search || "");
+  setContext("searchText", searchText);
+  const showExpired = writable($pageState.showExpired || true);
+  setContext("showExpired", showExpired);
+  $: {
+    pageState.set({ itemType, search: $searchText, showExpired: $showExpired });
   }
+
+  pageTitle.set(params.app);
 </script>
 
 <style>
-  .table-header {
-    @apply table-auto;
-    @apply my-4;
-  }
-
-  .table-header td {
-    @apply border;
-    @apply p-2;
+  @import "../main.scss";
+  h2 {
+    @include text-title-xs;
   }
 </style>
 
-<h1>{params.app}</h1>
-{#if app}
+{#await appDataPromise then app}
+  {#if app.annotation && app.annotation.warning}
+    <AppAlert status="warning" message={app.annotation.warning} />
+  {/if}
+
+  {#if app.prototype}
+    <AppAlert
+      status="warning"
+      message="This application is a prototype. The metrics and pings listed below may contain inconsistencies and testing strings." />
+  {/if}
+  <PageTitle text={app.canonical_app_name} />
+
   {#if app.deprecated}
     <Pill message="Deprecated" bgColor="#4a5568" />
   {/if}
-  <p class="mt-2">{app.description}</p>
-  <table class="table-header">
-    <tr>
-      <td>Source code Url</td>
-      <td><a href={app.url}>{app.url}</a></td>
-    </tr>
-    <tr>
-      <td>Application id</td>
-      <td><code>{app.app_id}</code></td>
-    </tr>
-  </table>
+  <p>{app.app_description}</p>
 
-  <h2>Pings</h2>
-  <ul>
-    {#each app.pings as ping}
-      <li>
-        <a href={`/apps/${params.app}/pings/${ping.name}`}>{ping.name}</a>
-        <i>{ping.description}</i>
-      </li>
-    {/each}
-  </ul>
-  <h2>Metrics</h2>
-  <FilterInput onChangeText={filterMetrics} />
-  <ul>
-    {#each filteredMetrics as metric}
-      <li>
-        <a href={`/apps/${params.app}/metrics/${metric.name}`}>{metric.name}</a>
-        <i>{metric.description}</i>
-      </li>
-    {/each}
-  </ul>
-{/if}
+  <MetadataTable
+    appName={params.app}
+    item={app}
+    schema={APPLICATION_DEFINITION_SCHEMA} />
+
+  <h2>Commentary</h2>
+  <Commentary item={app} itemType={'application'} />
+
+  <TabGroup
+    active={itemType}
+    on:tabChanged={({ detail }) => {
+      itemType = detail.active;
+      searchText.set('');
+    }}>
+    <Tab key="metrics">Metrics</Tab>
+    <Tab key="pings">Pings</Tab>
+    <Tab key="app_ids">Application IDs</Tab>
+
+    <TabContent key="pings">
+      <ItemList itemType="pings" items={app.pings} appName={app.app_name} />
+    </TabContent>
+
+    <TabContent key="metrics">
+      <ItemList itemType="metrics" items={app.metrics} appName={app.app_name} />
+    </TabContent>
+
+    <TabContent key="app_ids">
+      <ItemList
+        itemType="app_ids"
+        items={app.app_ids}
+        appName={app.app_name}
+        showFilter={false} />
+    </TabContent>
+  </TabGroup>
+{:catch}
+  <NotFound pageName={params.app} itemType="application" />
+{/await}

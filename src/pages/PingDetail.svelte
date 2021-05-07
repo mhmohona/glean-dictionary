@@ -1,65 +1,91 @@
 <script>
+  import { setContext } from "svelte";
+  import { writable } from "svelte/store";
+
   import { getPingData } from "../state/api";
+  import { pageState, pageTitle } from "../state/stores";
+  import { getBigQueryURL } from "../state/urls";
+
+  import AppVariantSelector from "../components/AppVariantSelector.svelte";
+  import Commentary from "../components/Commentary.svelte";
+  import HelpHoverable from "../components/HelpHoverable.svelte";
+  import ItemList from "../components/ItemList.svelte";
+  import MetadataTable from "../components/MetadataTable.svelte";
+  import NotFound from "../components/NotFound.svelte";
+  import Markdown from "../components/Markdown.svelte";
+  import PageTitle from "../components/PageTitle.svelte";
+  import { PING_SCHEMA } from "../data/schemas";
 
   export let params;
-  const pingDataPromise = getPingData(params.app, params.ping);
+
+  let selectedAppVariant;
+  const pingDataPromise = getPingData(params.app, params.ping).then(
+    (pingData) => {
+      [selectedAppVariant] = pingData.variants;
+      return pingData;
+    }
+  );
+
+  const searchText = writable($pageState.search || "");
+  setContext("searchText", searchText);
+  const showExpired = writable($pageState.showExpired || false);
+  setContext("showExpired", showExpired);
+  $: {
+    pageState.set({ search: $searchText, showExpired: $showExpired });
+  }
+
+  pageTitle.set(`${params.ping} | ${params.app}`);
 </script>
 
 <style>
-  .table-header {
-    @apply table-auto;
-    @apply my-4;
-  }
+  @import "../main.scss";
 
-  .table-header td {
-    @apply border;
-    @apply p-2;
+  @include metadata-table;
+  h2 {
+    @include text-title-xs;
   }
 </style>
 
 {#await pingDataPromise then ping}
-  <p><a href={`/apps/${params.app}/tables/${ping.name}`}>BigQuery table</a></p>
-  <h1>{ping.name}</h1>
-  <table class="table-header">
-    <tr>
-      <td>Description</td>
-      <td>{ping.description}</td>
-    </tr>
-    <tr>
-      <td>Related Bugs</td>
-      <td>
-        {#each ping.bugs as bug}<a class="mr-2" href={bug}>{bug}</a>{/each}
-      </td>
-    </tr>
-    <tr>
-      <td>Reviews Data</td>
-      <td>
-        {#each ping.data_reviews as review}
-          <a class="mr-2" href={review}>{review}</a>
-        {/each}
-      </td>
-    </tr>
-    <tr>
-      <td>Includes Client Identifier</td>
-      <td>{ping.client_id ? 'Yes' : 'No'}</td>
-    </tr>
-    <tr>
-      <td>
-        Notification Email{ping.notification_emails.length > 1 ? 's' : ''}
-      </td>
-      <td>
-        {#each ping.notification_emails as email}<span>{email}</span>{/each}
-      </td>
-    </tr>
-  </table>
+  <PageTitle text={ping.name} />
+  <p>
+    <Markdown text={ping.description} />
+  </p>
+
+  <h2>Metadata</h2>
+  <MetadataTable appName={params.app} item={ping} schema={PING_SCHEMA} />
+
+  <h2>Commentary</h2>
+  <Commentary item={ping} itemType={'ping'} />
+
+  <h2>Access</h2>
+
+  {#if ping.variants.length > 1}
+    <AppVariantSelector bind:selectedAppVariant variants={ping.variants} />
+  {/if}
+
+  {#if selectedAppVariant}
+    <table>
+      <col />
+      <col />
+      <tr>
+        <td>
+          BigQuery
+          <HelpHoverable
+            content={'The BigQuery representation of this ping.'} />
+        </td>
+        <td>
+          <a
+            href={getBigQueryURL(params.app, selectedAppVariant.app_id, params.ping)}>
+            {selectedAppVariant.table}
+          </a>
+        </td>
+      </tr>
+    </table>
+  {/if}
 
   <h2>Metrics</h2>
-  <ul>
-    {#each ping.metrics as metric}
-      <li>
-        <a href={`/apps/${params.app}/metrics/${metric.name}`}>{metric.name}</a>
-        <i>{metric.description}</i>
-      </li>
-    {/each}
-  </ul>
+  <ItemList itemType="metrics" items={ping.metrics} appName={params.app} />
+{:catch}
+  <NotFound pageName={params.ping} itemType="ping" />
 {/await}
